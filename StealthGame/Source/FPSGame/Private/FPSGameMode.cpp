@@ -17,7 +17,7 @@ AFPSGameMode::AFPSGameMode()
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-void AFPSGameMode::CompleteMission(APawn* instigatorPawn)
+void AFPSGameMode::CompleteMission(APawn* instigatorPawn, bool missionSuccess)
 {
 	if (instigatorPawn)
 	{
@@ -44,5 +44,5 @@ void AFPSGameMode::CompleteMission(APawn* instigatorPawn)
 		}
 	}
 
-	OnMissionCompleted(instigatorPawn);
+	OnMissionCompleted(instigatorPawn, missionSuccess);
 }
