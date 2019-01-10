@@ -6,6 +6,7 @@
 #include "TimerManager.h"
 #include "FPSGameMode.h"
 #include "Engine/World.h"
+#include "Net/UnrealNetwork.h"
 
 
 // Sets default values
@@ -86,6 +87,12 @@ void AFPSAIGuard::ResetOrientation()
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
+void AFPSAIGuard::OnRep_GuardState()
+{
+	OnStateChanged(m_guardState);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
 void AFPSAIGuard::SetGuardState(EAIState newState)
 {
 	if (m_guardState == newState)
@@ -94,8 +101,7 @@ void AFPSAIGuard::SetGuardState(EAIState newState)
 	}
 
 	m_guardState = newState;
-
-	OnStateChanged(m_guardState);
+	OnRep_GuardState();
 }
 
 // Called every frame
@@ -103,4 +109,12 @@ void AFPSAIGuard::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+void AFPSAIGuard::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME(AFPSAIGuard, m_guardState);
 }
