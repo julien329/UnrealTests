@@ -73,3 +73,14 @@ void ASCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponen
 	PlayerInputComponent->BindAction("Crouch", EInputEvent::IE_Pressed, this, &ASCharacter::BeginCrouch);
 	PlayerInputComponent->BindAction("Crouch", EInputEvent::IE_Released, this, &ASCharacter::EndCrouch);
 }
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+FVector ASCharacter::GetPawnViewLocation() const
+{
+	if (m_cameraComp)
+	{
+		return m_cameraComp->GetComponentLocation();
+	}
+
+	return Super::GetPawnViewLocation();
+}
