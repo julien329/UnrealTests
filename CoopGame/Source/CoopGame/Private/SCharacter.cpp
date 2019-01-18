@@ -1,13 +1,16 @@
 // Fill out your copyright notice in the Description page of Project Settings.
 
-#include "SCharacter.h"
 #include "Camera/CameraComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/InputComponent.h"
-#include "GameFramework/SpringArmComponent.h"
-#include "GameFramework/PawnMovementComponent.h"
-#include "SWeapon.h"
-#include "Engine/World.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "CoopGame.h"
+#include "Engine/World.h"
+#include "GameFramework/PawnMovementComponent.h"
+#include "GameFramework/SpringArmComponent.h"
+#include "SCharacter.h"
+#include "SHealthComponent.h"
+#include "SWeapon.h"
 
 // Sets default values
 ASCharacter::ASCharacter()
@@ -21,8 +24,12 @@ ASCharacter::ASCharacter()
 
 	GetMovementComponent()->GetNavAgentPropertiesRef().bCanCrouch = true;
 
+	_healthComp = CreateDefaultSubobject<USHealthComponent>(TEXT("HealthComp"));
+
 	_cameraComp = CreateDefaultSubobject<UCameraComponent>(TEXT("CameraComp"));
 	_cameraComp->SetupAttachment(_springArmComp);
+
+	GetCapsuleComponent()->SetCollisionResponseToChannel(COLLISION_WEAPON, ECR_Ignore);
 
 	_zoomedFOV = 65.0f;
 	_zoomInterpSpeed = 20.0;
@@ -46,6 +53,8 @@ void ASCharacter::BeginPlay()
 		_currentWeapon->SetOwner(this);
 		_currentWeapon->AttachToComponent(GetMesh(), FAttachmentTransformRules::SnapToTargetNotIncludingScale, _weaponAttachSocketName);
 	}
+
+	_healthComp->OnHealthChanged.AddDynamic(this, &ASCharacter::OnHealthChanged);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -99,6 +108,22 @@ void ASCharacter::StopFire()
 	if (_currentWeapon)
 	{
 		_currentWeapon->StopFire();
+	}
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+void ASCharacter::OnHealthChanged(USHealthComponent* healthComp, float health, float healthDelta, UDamageType const* damageType, AController* instigatedBy, AActor* damageCauser)
+{
+	if (health <= 0.0f && !_isDead)
+	{
+		_isDead = true;
+
+		GetMovementComponent()->StopMovementImmediately();
+		GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+		DetachFromControllerPendingDestroy();
+
+		SetLifeSpan(10.0f);
 	}
 }
 
