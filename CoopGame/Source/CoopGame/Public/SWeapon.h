@@ -10,6 +10,25 @@ class USkeletalMeshComponent;
 class UDamageType;
 class UParticleSystem;
 
+///////////////////////////////////////////////////////////////////////////////////////////////////
+USTRUCT()
+struct FHitScanTrace
+{
+	GENERATED_BODY()
+
+public:
+
+	UPROPERTY()
+	TEnumAsByte<EPhysicalSurface> _surfaceType;
+
+	UPROPERTY()
+	FVector_NetQuantize _traceTo;
+
+	UPROPERTY()
+	int8 _seed;
+};
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
 UCLASS()
 class COOPGAME_API ASWeapon : public AActor
 {
@@ -25,7 +44,15 @@ protected:
 
 	void Fire();
 
+	UFUNCTION(Server, Reliable, WithValidation)
+	void ServerFire();
+
 	void PlayFireEffects(FVector tracerEndPoint);
+
+	void PlayImpactEffects(EPhysicalSurface surfaceType, FVector impactPoint);
+
+	UFUNCTION()
+	void OnRep_HitScanTrace();
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	USkeletalMeshComponent* _meshComp;
@@ -68,6 +95,9 @@ protected:
 	FTimerHandle _timerHandle_timeBetweenShots;
 
 	float _lastFireTime;
+
+	UPROPERTY(ReplicatedUsing=OnRep_HitScanTrace)
+	FHitScanTrace _hitScanTrace;
 
 public:
 

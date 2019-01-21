@@ -11,6 +11,7 @@
 #include "CoopGame.h"
 #include "TimerManager.h"
 #include "GameFramework/Actor.h"
+#include "Net/UnrealNetwork.h"
 
 static int32 _debugWeaponDrawing = 0;
 FAutoConsoleVariableRef CVARDebugWeaponDrawing(TEXT("COOP.DebugWeapons"), _debugWeaponDrawing, TEXT("Draw debug lines for weapons."), ECVF_Cheat);
@@ -28,6 +29,11 @@ ASWeapon::ASWeapon()
 	_vulnerableDamageMulti = 4.0f;
 
 	_rateOfFire = 600;
+
+	SetReplicates(true);
+
+	NetUpdateFrequency = 66.0f;
+	MinNetUpdateFrequency = 33.0f;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -41,6 +47,11 @@ void ASWeapon::BeginPlay()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void ASWeapon::Fire()
 {
+	if (Role < ROLE_Authority)
+	{
+		ServerFire();
+	}
+
 	if (AActor* myOwner = GetOwner())
 	{
 		FVector eyeLocation;
@@ -58,12 +69,14 @@ void ASWeapon::Fire()
 
 		FVector tracerEndPoint = traceEnd;
 
+		EPhysicalSurface surfaceType = EPhysicalSurface::SurfaceType_Default;
+
 		FHitResult hit;
 		if (GetWorld()->LineTraceSingleByChannel(hit, eyeLocation, traceEnd, COLLISION_WEAPON, queryParams))
 		{
 			AActor* hitActor = hit.GetActor();
 
-			EPhysicalSurface surfaceType = UPhysicalMaterial::DetermineSurfaceType(hit.PhysMaterial.Get());
+			surfaceType = UPhysicalMaterial::DetermineSurfaceType(hit.PhysMaterial.Get());
 
 			float actualDamage = _baseDamage;
 			if (surfaceType == SURFACE_FLESHVULNERABLE)
@@ -71,30 +84,23 @@ void ASWeapon::Fire()
 				actualDamage *= _vulnerableDamageMulti;
 			}
 
-
 			UGameplayStatics::ApplyPointDamage(hitActor, actualDamage, shotDirection, hit, myOwner->GetInstigatorController(), this, _damageType);
 
-			UParticleSystem* selectedEffect = nullptr;
-			switch (surfaceType)
-			{
-				case SURFACE_FLESHDEFAULT:
-				case SURFACE_FLESHVULNERABLE:
-					selectedEffect = _fleshImpactEffect;
-					break;
-				default:
-					selectedEffect = _defaultImpactEffect;
-					break;
-			}
-
-			if (selectedEffect)
-			{
-				UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), selectedEffect, hit.ImpactPoint, hit.ImpactNormal.Rotation(), FVector(0.33f));
-			}
+			PlayImpactEffects(surfaceType, hit.ImpactPoint);
 
 			tracerEndPoint = hit.ImpactPoint;
+
+			_hitScanTrace._surfaceType = surfaceType;
 		}
 
 		PlayFireEffects(tracerEndPoint);
+
+		if (Role == ROLE_Authority)
+		{
+			_hitScanTrace._traceTo = tracerEndPoint;
+			_hitScanTrace._surfaceType = surfaceType;
+			_hitScanTrace._seed = (_hitScanTrace._seed + 1) % 127;
+		}
 
 		_lastFireTime = GetWorld()->TimeSeconds;
 
@@ -103,6 +109,18 @@ void ASWeapon::Fire()
 			DrawDebugLine(GetWorld(), eyeLocation, traceEnd, FColor::White, false, 1.0f, 0, 1.0f);
 		}
 	}
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+void ASWeapon::ServerFire_Implementation()
+{
+	Fire();
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+bool ASWeapon::ServerFire_Validate()
+{
+	return true;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -133,6 +151,38 @@ void ASWeapon::PlayFireEffects(FVector tracerEndPoint)
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
+void ASWeapon::PlayImpactEffects(EPhysicalSurface surfaceType, FVector impactPoint)
+{
+	UParticleSystem* selectedEffect = nullptr;
+	switch (surfaceType)
+	{
+		case SURFACE_FLESHDEFAULT:
+		case SURFACE_FLESHVULNERABLE:
+			selectedEffect = _fleshImpactEffect;
+			break;
+		default:
+			selectedEffect = _defaultImpactEffect;
+			break;
+	}
+
+	if (selectedEffect)
+	{
+		FVector muzzleLocation = _meshComp->GetSocketLocation(_muzzleSocketName);
+
+		FVector shotDirection = impactPoint - muzzleLocation;
+		shotDirection.Normalize();
+
+		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), selectedEffect, impactPoint, shotDirection.Rotation(), FVector(0.33f));
+	}
+}
+
+void ASWeapon::OnRep_HitScanTrace()
+{
+	PlayFireEffects(_hitScanTrace._traceTo);
+	PlayImpactEffects(_hitScanTrace._surfaceType, _hitScanTrace._traceTo);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
 void ASWeapon::StartFire()
 {
 	float firstDelay = FMath::Max(_timeBetweenShots - (GetWorld()->TimeSeconds - _lastFireTime), 0.0f);
@@ -143,4 +193,12 @@ void ASWeapon::StartFire()
 void ASWeapon::StopFire()
 {
 	GetWorldTimerManager().ClearTimer(_timerHandle_timeBetweenShots);
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+void ASWeapon::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+	Super::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+	DOREPLIFETIME_CONDITION(ASWeapon, _hitScanTrace, COND_SkipOwner);
 }
